@@ -27,7 +27,7 @@ ANSI_BOLD = "\033[1m"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="imsg",
+        prog="tmsg",
         description="Open an interactive iMessage session in your terminal.",
     )
     parser.add_argument("contact", nargs="?", help="Phone number, email, or known chat label.")
@@ -421,7 +421,7 @@ def run_chat_session(
     poll_interval: float,
 ) -> tuple[bool, Contact | None]:
     history = store.recent_messages(contact, limit=history_limit)
-    print(f"imsg session: {contact.label}")
+    print(f"tmsg session: {contact.label}")
     if history:
         print_history(history, "you", contact.label)
 

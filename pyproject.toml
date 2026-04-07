@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "imsg"
+name = "terminal-messenger"
 version = "0.1.0"
 description = "Terminal iMessage client for macOS"
 readme = "README.md"
@@ -14,4 +14,7 @@ authors = [
 dependencies = []
 
 [project.scripts]
-imsg = "imsg.cli:main"
+tmsg = "tmsg.cli:main"
+
+[tool.setuptools]
+packages = ["imsg", "tmsg"]

@@ -1,3 +1,11 @@
+Metadata-Version: 2.1
+Name: terminal-messenger
+Version: 0.1.0
+Summary: Terminal iMessage client for macOS
+Author: Cole Striler
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
 # tmsg
 
 `tmsg` is a local macOS terminal client for iMessage. The distributable package name is `terminal-messenger`, and the command people run is `tmsg`.
