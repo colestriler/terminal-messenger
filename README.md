@@ -1,12 +1,16 @@
 # imsg
 
-`imsg` is a local macOS CLI that opens an interactive iMessage session inside your current terminal window.
+`imsg` is a local macOS terminal client for iMessage. It opens inside your current terminal window, lets you browse recent conversations, search the chat picker, open a thread, and text from the command line.
 
-## What v1 does
+## Current behavior
 
 - Sends messages through `Messages.app` using AppleScript.
-- Polls your local Messages database for recent inbound and outbound messages.
-- Opens a lightweight REPL so you can type `imsg` much like `claude`.
+- Reads recent messages from the local Messages database.
+- Shows up to 250 recent conversations in the picker and list view.
+- Loads 100 recent messages by default when you open a chat.
+- Resolves many phone numbers and emails to contact names from macOS Contacts.
+- Supports arrow-key chat selection and live search in the picker.
+- Styles your messages differently from incoming ones for easier scanning.
 
 ## Install
 
@@ -15,58 +19,84 @@ cd /Users/colestriler/code/terminal-messenger
 python3 -m pip install -e .
 ```
 
-After that, you can start a session with:
+## Run
+
+Open the interactive picker:
 
 ```bash
-python3 -m imsg --contact "+15555555555"
+python3 -m imsg
 ```
 
-or:
+Open a specific conversation directly:
 
 ```bash
 python3 -m imsg frida
 ```
 
-If no contact is passed, `imsg` will list recent conversations and let you pick one.
-Use the arrow keys to move, start typing to search, and press Return to open a chat.
+or:
 
-To just list recent conversations:
+```bash
+python3 -m imsg --contact "+15555555555"
+```
+
+List recent conversations without opening a chat:
 
 ```bash
 python3 -m imsg --list-chats
 ```
 
-## Commands
+Override the default 100-message history window:
 
-- `python3 -m imsg --list-chats`
+```bash
+python3 -m imsg --history-limit 200
+```
+
+## Picker controls
+
+When the chat picker is open:
+
+- Type to search/filter conversations live.
+- `Up` / `Down` moves the selection.
+- `Enter` opens the highlighted conversation.
+- `Backspace` deletes search text.
+- `Esc` or `q` cancels.
+
+## In-chat commands
+
 - `/help`
 - `/history`
-- `/list` to go back to the full chat list and switch conversations
+- `/list` goes back to the conversation picker
 - `/quit`
 
 ## Permissions
 
-This tool depends on macOS privacy permissions.
+`imsg` depends on macOS privacy permissions.
 
-- The first send should trigger an Automation prompt so Terminal or your Python runtime can control `Messages`.
-- Reading `~/Library/Messages/chat.db` may require Full Disk Access for Terminal, iTerm, or the Python binary you are using.
+- The first send should trigger an Automation prompt so your terminal or Python runtime can control `Messages`.
+- Reading `~/Library/Messages/chat.db` may require Full Disk Access for your terminal app and sometimes the `python3` binary too.
 
-If sending fails, check:
+If sending or reading fails, check:
 
 - `System Settings > Privacy & Security > Automation`
 - `System Settings > Privacy & Security > Full Disk Access`
 
-## Known limitations
+## Notes
 
-- The local Messages database schema is undocumented and may change across macOS versions.
-- Some rich-text or attachment-only messages may not decode cleanly in v1.
-- Contact-name resolution is best-effort; if a name does not resolve, pass the phone number or email directly.
+- The Messages database schema is undocumented and may change across macOS versions.
+- Contact-name resolution is best-effort and depends on local Contacts data.
+- Some reactions, attachments, and rich-content previews are still rough around the edges.
+- There may still be terminal UX quirks because the chat view currently uses a lightweight terminal loop rather than a full-screen TUI.
 
-## Local verification
+## Verify locally
 
-1. Run `python3 -m unittest discover -s tests`.
-2. Start a chat with `python3 -m imsg --contact "+15555555555"`.
-3. Or run `python3 -m imsg` and choose a recent conversation.
-4. Send a message and approve the Automation prompt if macOS asks.
-5. Reply from another device and confirm the terminal prints the incoming message.
+```bash
+python3 -m unittest discover -s tests
+```
+
+Then:
+
+1. Run `python3 -m imsg`.
+2. Search or arrow to a conversation and press `Enter`.
+3. Send a message and approve the Automation prompt if macOS asks.
+4. Reply from another device and confirm the terminal prints the incoming message.
 
