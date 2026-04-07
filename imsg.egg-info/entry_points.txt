@@ -1,0 +1,2 @@
+[console_scripts]
+imsg = imsg.cli:main

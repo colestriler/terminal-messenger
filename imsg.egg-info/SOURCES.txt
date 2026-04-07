@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+imsg/__init__.py
+imsg/__main__.py
+imsg/cli.py
+imsg/messages_applescript.py
+imsg/messages_store.py
+imsg/models.py
+imsg.egg-info/PKG-INFO
+imsg.egg-info/SOURCES.txt
+imsg.egg-info/dependency_links.txt
+imsg.egg-info/entry_points.txt
+imsg.egg-info/top_level.txt
+tests/test_store_parsing.py
