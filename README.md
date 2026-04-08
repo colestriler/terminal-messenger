@@ -10,6 +10,7 @@
 - Loads 100 recent messages by default when you open a chat.
 - Resolves many phone numbers and emails to contact names from macOS Contacts.
 - Supports arrow-key chat selection and live search in the picker.
+- Shows `*` markers for chats with unread incoming messages.
 - Styles your messages differently from incoming ones for easier scanning.
 
 ## Install
@@ -69,11 +70,13 @@ python3 -m tmsg
 
 When the chat picker is open:
 
+- `*` marks chats with unread messages.
 - Type to search/filter conversations live.
 - `Up` / `Down` moves the selection.
 - `Enter` opens the highlighted conversation.
 - `Backspace` deletes search text.
 - `Esc` or `q` cancels.
+- The picker refreshes periodically while open so new unread chats can appear.
 
 ## In-chat commands
 

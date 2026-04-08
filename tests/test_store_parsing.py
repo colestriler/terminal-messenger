@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Dict, List
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ from imsg.contact_resolver import normalize_phone
 from imsg.cli import (
     ANSI_BLUE,
     ANSI_CYAN,
+    contact_is_unread,
     filter_conversations,
     format_contact_option,
     flush_new_messages,
@@ -26,6 +29,7 @@ from imsg.messages_store import (
     row_to_contact,
 )
 from imsg.models import Contact, Message
+from imsg.seen_state import SeenState
 
 
 class FakeStore:
@@ -131,6 +135,11 @@ class StoreParsingTests(unittest.TestCase):
         rendered = format_contact_option(1, contact)
         self.assertNotIn("(+15550000001)", rendered)
 
+    def test_format_contact_option_marks_unread(self) -> None:
+        contact = Contact(handle="+15551234567", label="Frida")
+        rendered = format_contact_option(1, contact, unread=True)
+        self.assertIn("* Frida", rendered)
+
     def test_transcript_label_shortens_long_name(self) -> None:
         self.assertEqual(
             transcript_label("Frida Marie Ranghild Schaefer Bastian"),
@@ -140,7 +149,12 @@ class StoreParsingTests(unittest.TestCase):
     def test_prompt_for_conversation_accepts_number(self) -> None:
         store = FakeStore()
         with patch("builtins.input", return_value="2"):
-            selected = prompt_for_conversation(store, limit=10, interactive_picker=False)
+            selected = prompt_for_conversation(
+                store,
+                SeenState(path=Path("/tmp/nonexistent-seen-state.json")),
+                limit=10,
+                interactive_picker=False,
+            )
         self.assertEqual(selected.label, "Mom")
 
     def test_filter_conversations_matches_name_and_preview(self) -> None:
@@ -157,9 +171,43 @@ class StoreParsingTests(unittest.TestCase):
         store = FakeStore()
         current = store.contacts[0]
         with patch("imsg.cli.prompt_for_conversation", return_value=store.contacts[1]):
-            result = handle_input("/list", store, current, set(), Counter(), 10)
+            result = handle_input(
+                "/list",
+                store,
+                current,
+                set(),
+                Counter(),
+                SeenState(path=Path("/tmp/nonexistent-seen-state.json")),
+                10,
+            )
         self.assertEqual(result.next_contact, store.contacts[1])
         self.assertTrue(result.keep_running)
+
+    def test_handle_input_sends_to_chat_guid_when_available(self) -> None:
+        store = FakeMessageStore([])
+        contact = Contact(
+            handle="+15550000001",
+            label="Group Chat",
+            chat_identifier="chat123",
+            chat_guid="iMessage;+;chat123",
+            participant_handles=("+15550000001", "+15550000002", "+15550000003"),
+        )
+        with patch("imsg.cli.send_message") as send_mock, patch("time.sleep", return_value=None):
+            result = handle_input(
+                "hello",
+                store,
+                contact,
+                set(),
+                Counter(),
+                SeenState(path=Path("/tmp/nonexistent-seen-state.json")),
+                10,
+            )
+        self.assertTrue(result.keep_running)
+        send_mock.assert_called_once_with(
+            "+15550000001",
+            "hello",
+            participant_handles=("+15550000001", "+15550000002", "+15550000003"),
+        )
 
     def test_row_to_contact_collapses_group_chat(self) -> None:
         row = {
@@ -171,6 +219,11 @@ class StoreParsingTests(unittest.TestCase):
             "text": "group hello",
             "attributedBody": None,
             "date": 784_000_000_000_000_000,
+            "latest_message_rowid": 99,
+            "latest_incoming_rowid": 98,
+            "latest_incoming_date": 784_000_000_000_000_000,
+            "unread_count": 1,
+            "last_read_message_timestamp": 0,
         }
         contact = row_to_contact(row)
         self.assertIsNotNone(contact)
@@ -189,6 +242,11 @@ class StoreParsingTests(unittest.TestCase):
             "text": "hello",
             "attributedBody": None,
             "date": 784_000_000_000_000_000,
+            "latest_message_rowid": 99,
+            "latest_incoming_rowid": 98,
+            "latest_incoming_date": 784_000_000_000_000_000,
+            "unread_count": 1,
+            "last_read_message_timestamp": 0,
         }
         resolver = FakeResolver({"+15550000001": "Frida"})
         contact = row_to_contact(row, resolver=resolver)
@@ -230,7 +288,16 @@ class StoreParsingTests(unittest.TestCase):
         store = FakeMessageStore([message])
         seen = set()
         pending = Counter({pending_message_key("test"): 1})
-        fresh = flush_new_messages(store, contact, seen, pending, 10, "you", "Frida")
+        fresh = flush_new_messages(
+            store,
+            contact,
+            seen,
+            pending,
+            SeenState(path=Path("/tmp/nonexistent-seen-state.json")),
+            10,
+            "you",
+            "Frida",
+        )
         self.assertEqual(fresh, [])
         self.assertEqual(pending, Counter())
         self.assertIn(message.dedupe_key, seen)
@@ -240,6 +307,32 @@ class StoreParsingTests(unittest.TestCase):
             pending_message_key("hello   world\nagain"),
             "hello world again",
         )
+
+    def test_contact_is_unread_uses_db_state(self) -> None:
+        contact = Contact(
+            handle="+15551234567",
+            label="Frida",
+            latest_incoming_rowid=10,
+            unread_count=1,
+            latest_incoming_at=datetime(2026, 4, 7, 15, 0, tzinfo=timezone.utc),
+            last_read_message_timestamp=datetime(2026, 4, 7, 14, 0, tzinfo=timezone.utc),
+        )
+        seen_state = SeenState(path=Path("/tmp/nonexistent-seen-state.json"))
+        self.assertTrue(contact_is_unread(contact, seen_state))
+
+    def test_contact_is_unread_respects_local_seen_override(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            seen_state = SeenState(path=Path(temp_dir) / "seen.json")
+            contact = Contact(
+                handle="+15551234567",
+                label="Frida",
+                latest_incoming_rowid=10,
+                unread_count=1,
+                latest_incoming_at=datetime(2026, 4, 7, 15, 0, tzinfo=timezone.utc),
+                last_read_message_timestamp=datetime(2026, 4, 7, 14, 0, tzinfo=timezone.utc),
+            )
+            seen_state.mark_contact_seen(contact)
+            self.assertFalse(contact_is_unread(contact, seen_state))
 
 
 if __name__ == "__main__":

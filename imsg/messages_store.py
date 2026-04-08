@@ -41,6 +41,7 @@ CONTACT_QUERY = """
 SELECT
   handle.id AS handle_id,
   handle.service,
+  chat.guid AS chat_guid,
   chat.chat_identifier,
   chat.display_name,
   MAX(message.date) AS last_message_date
@@ -58,7 +59,7 @@ WHERE (
   OR LOWER(COALESCE(chat.chat_identifier, '')) LIKE LOWER(?)
   OR LOWER(COALESCE(chat.display_name, '')) LIKE LOWER(?)
 )
-GROUP BY handle.id, handle.service, chat.chat_identifier, chat.display_name
+GROUP BY handle.id, handle.service, chat.guid, chat.chat_identifier, chat.display_name
 ORDER BY last_message_date DESC
 LIMIT 5
 """
@@ -66,14 +67,42 @@ LIMIT 5
 RECENT_CHATS_QUERY = """
 SELECT
   chat.ROWID AS chat_rowid,
+  chat.guid AS chat_guid,
   chat.chat_identifier,
   chat.display_name,
+  chat.last_read_message_timestamp,
   GROUP_CONCAT(DISTINCT handle.id) AS participant_handles,
   COUNT(DISTINCT handle.id) AS participant_count,
   MAX(handle.service) AS service,
+  latest_message.ROWID AS latest_message_rowid,
   latest_message.text,
   latest_message.attributedBody,
-  latest_message.date
+  latest_message.date,
+  (
+    SELECT MAX(m2.ROWID)
+    FROM chat_message_join AS cmj2
+    JOIN message AS m2
+      ON m2.ROWID = cmj2.message_id
+    WHERE cmj2.chat_id = chat.ROWID
+      AND m2.is_from_me = 0
+  ) AS latest_incoming_rowid,
+  (
+    SELECT MAX(m2.date)
+    FROM chat_message_join AS cmj2
+    JOIN message AS m2
+      ON m2.ROWID = cmj2.message_id
+    WHERE cmj2.chat_id = chat.ROWID
+      AND m2.is_from_me = 0
+  ) AS latest_incoming_date,
+  (
+    SELECT COUNT(*)
+    FROM chat_message_join AS cmj3
+    JOIN message AS m3
+      ON m3.ROWID = cmj3.message_id
+    WHERE cmj3.chat_id = chat.ROWID
+      AND m3.is_from_me = 0
+      AND m3.is_read = 0
+  ) AS unread_count
 FROM chat
 LEFT JOIN chat_handle_join
   ON chat_handle_join.chat_id = chat.ROWID
@@ -93,7 +122,8 @@ WHERE latest_message.ROWID = (
   LIMIT 1
 )
 GROUP BY
-  chat.ROWID,
+    chat.ROWID,
+    chat.guid,
   chat.chat_identifier,
   chat.display_name,
   latest_message.text,
@@ -237,16 +267,33 @@ def _participant_list(value: str | None) -> list[str]:
     return [item for item in value.split(",") if item]
 
 
+def _row_value(row: sqlite3.Row | dict[str, object], key: str) -> object:
+    if isinstance(row, dict):
+        return row.get(key)
+    return row[key]
+
+
 def row_to_contact(row: sqlite3.Row, resolver: ContactResolver | None = None) -> Contact | None:
-    participant_handles = _participant_list(row["participant_handles"])
-    participant_count = int(row["participant_count"] or 0)
-    chat_identifier = row["chat_identifier"]
+    participant_handles = _participant_list(_row_value(row, "participant_handles"))
+    participant_count = int(_row_value(row, "participant_count") or 0)
+    chat_identifier = _row_value(row, "chat_identifier")
+    chat_guid = _row_value(row, "chat_guid")
 
     if not participant_handles and not chat_identifier:
         return None
 
-    preview = normalize_text(row["text"], row["attributedBody"]) or None
-    last_message_at = apple_timestamp_to_datetime(row["date"])
+    preview = normalize_text(_row_value(row, "text"), _row_value(row, "attributedBody")) or None
+    last_message_at = apple_timestamp_to_datetime(_row_value(row, "date"))
+    latest_incoming_at = (
+        apple_timestamp_to_datetime(_row_value(row, "latest_incoming_date"))
+        if _row_value(row, "latest_incoming_date") not in (None, 0)
+        else None
+    )
+    last_read_message_timestamp = (
+        apple_timestamp_to_datetime(_row_value(row, "last_read_message_timestamp"))
+        if _row_value(row, "last_read_message_timestamp") not in (None, 0)
+        else None
+    )
     participant_labels = [
         resolver.lookup(handle) if resolver else None
         for handle in participant_handles
@@ -255,8 +302,8 @@ def row_to_contact(row: sqlite3.Row, resolver: ContactResolver | None = None) ->
         label or handle for handle, label in zip(participant_handles, participant_labels)
     ]
 
-    if row["display_name"]:
-        label = row["display_name"]
+    if _row_value(row, "display_name"):
+        label = _row_value(row, "display_name")
     elif participant_count > 1:
         label = ", ".join(rendered_participants[:3])
         if participant_count > 3:
@@ -269,9 +316,16 @@ def row_to_contact(row: sqlite3.Row, resolver: ContactResolver | None = None) ->
         handle=handle,
         label=label or "Unknown chat",
         chat_identifier=chat_identifier,
-        service=row["service"],
+        chat_guid=chat_guid,
+        participant_handles=tuple(participant_handles),
+        service=_row_value(row, "service"),
         preview=preview,
         last_message_at=last_message_at,
+        last_message_rowid=_row_value(row, "latest_message_rowid"),
+        latest_incoming_rowid=_row_value(row, "latest_incoming_rowid"),
+        latest_incoming_at=latest_incoming_at,
+        unread_count=int(_row_value(row, "unread_count") or 0),
+        last_read_message_timestamp=last_read_message_timestamp,
     )
 
 
@@ -313,6 +367,8 @@ class MessageStore:
             handle=row["handle_id"] or search_term,
             label=label,
             chat_identifier=row["chat_identifier"],
+            chat_guid=row["chat_guid"],
+            participant_handles=((row["handle_id"],) if row["handle_id"] else ()),
             service=row["service"],
         )
 

@@ -14,6 +14,7 @@ from datetime import datetime
 from imsg.messages_applescript import MessageSendError, send_message
 from imsg.messages_store import MessageStore, MessageStoreError
 from imsg.models import Contact, Message
+from imsg.seen_state import SeenState
 
 
 DEFAULT_CHAT_LIST_LIMIT = 250
@@ -23,6 +24,7 @@ ANSI_DIM = "\033[2m"
 ANSI_BLUE = "\033[38;5;39m"
 ANSI_CYAN = "\033[38;5;45m"
 ANSI_BOLD = "\033[1m"
+PICKER_REFRESH_MS = 1200
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -120,8 +122,30 @@ def clear_previous_input_line() -> None:
     sys.stdout.flush()
 
 
-def format_contact_option(index: int, contact: Contact) -> str:
-    parts = [f"{index}. {contact.label}"]
+def conversation_key(contact: Contact) -> str:
+    return contact.chat_identifier or contact.handle
+
+
+def contact_is_unread(contact: Contact, seen_state: SeenState | None) -> bool:
+    latest_incoming_rowid = contact.latest_incoming_rowid or 0
+    if latest_incoming_rowid <= 0:
+        return False
+
+    local_seen = seen_state.seen_incoming_rowid(contact) if seen_state else 0
+    if local_seen >= latest_incoming_rowid:
+        return False
+    if contact.unread_count > 0:
+        return True
+    if contact.latest_incoming_at is None:
+        return False
+    if contact.last_read_message_timestamp is None:
+        return True
+    return contact.latest_incoming_at > contact.last_read_message_timestamp
+
+
+def format_contact_option(index: int, contact: Contact, unread: bool = False) -> str:
+    unread_prefix = "* " if unread else ""
+    parts = [f"{index}. {unread_prefix}{contact.label}"]
     if contact.handle and contact.handle != contact.label and "," not in contact.label:
         parts.append(f"({contact.handle})")
     if contact.last_message_at:
@@ -135,13 +159,13 @@ def format_contact_option(index: int, contact: Contact) -> str:
     return line
 
 
-def print_conversation_list(conversations: list[Contact]) -> None:
+def print_conversation_list(conversations: list[Contact], seen_state: SeenState | None = None) -> None:
     if not conversations:
         print("No recent conversations found.")
         return
 
     for index, contact in enumerate(conversations, start=1):
-        print(format_contact_option(index, contact))
+        print(format_contact_option(index, contact, unread=contact_is_unread(contact, seen_state)))
 
 
 def truncate_line(value: str, width: int) -> str:
@@ -166,21 +190,37 @@ def filter_conversations(conversations: list[Contact], query: str) -> list[Conta
     return [contact for contact in conversations if normalized in contact_search_blob(contact)]
 
 
-def select_conversation_with_arrows(conversations: list[Contact]) -> Contact | None:
-    if not conversations:
-        return None
-
+def select_conversation_with_arrows(
+    store: MessageStore,
+    seen_state: SeenState,
+    limit: int,
+) -> Contact | None:
     def run_picker(stdscr: curses.window) -> Contact | None:
         curses.curs_set(0)
         stdscr.keypad(True)
+        stdscr.timeout(PICKER_REFRESH_MS)
         selected_index = 0
         scroll_offset = 0
         query = ""
+        selected_key: str | None = None
 
         while True:
+            conversations = store.recent_conversations(limit=limit)
+            if not conversations:
+                return None
+
             stdscr.erase()
             height, width = stdscr.getmaxyx()
             filtered = filter_conversations(conversations, query)
+            if filtered:
+                selected_index = min(selected_index, len(filtered) - 1)
+            else:
+                selected_index = 0
+            if selected_key is not None:
+                for idx, contact in enumerate(filtered):
+                    if conversation_key(contact) == selected_key:
+                        selected_index = idx
+                        break
             visible_count = max(1, height - 3)
             header = "Select a chat (type to search, Up/Down move, Enter open, Esc cancel)"
             stdscr.addnstr(0, 0, truncate_line(header, width - 1), max(0, width - 1))
@@ -211,12 +251,18 @@ def select_conversation_with_arrows(conversations: list[Contact]) -> Contact | N
             visible = filtered[scroll_offset : scroll_offset + visible_count]
             for row_index, contact in enumerate(visible, start=2):
                 absolute_index = scroll_offset + row_index - 1
-                line = format_contact_option(absolute_index, contact)
+                unread = contact_is_unread(contact, seen_state)
+                line = format_contact_option(absolute_index, contact, unread=unread)
                 attr = curses.A_REVERSE if absolute_index - 1 == selected_index else curses.A_NORMAL
+                if unread:
+                    attr |= curses.A_BOLD
                 stdscr.addnstr(row_index, 0, truncate_line(line, width - 1), max(0, width - 1), attr)
 
             stdscr.refresh()
             key = stdscr.getch()
+            if key == -1:
+                selected_key = filtered[selected_index].chat_identifier or filtered[selected_index].handle
+                continue
             if key in (curses.KEY_UP, ord("k")):
                 selected_index = max(0, selected_index - 1)
             elif key in (curses.KEY_DOWN, ord("j")):
@@ -237,12 +283,15 @@ def select_conversation_with_arrows(conversations: list[Contact]) -> Contact | N
                 query += chr(key)
                 selected_index = 0
                 scroll_offset = 0
+            if filtered:
+                selected_key = filtered[selected_index].chat_identifier or filtered[selected_index].handle
 
     return curses.wrapper(run_picker)
 
 
 def prompt_for_conversation(
     store: MessageStore,
+    seen_state: SeenState,
     limit: int = 10,
     interactive_picker: bool = True,
     allow_cancel: bool = False,
@@ -255,7 +304,7 @@ def prompt_for_conversation(
 
     if interactive_picker and sys.stdin.isatty() and sys.stdout.isatty():
         try:
-            selected = select_conversation_with_arrows(conversations)
+            selected = select_conversation_with_arrows(store, seen_state, limit)
         except curses.error:
             selected = None
         if selected is not None:
@@ -266,7 +315,7 @@ def prompt_for_conversation(
             return None
 
     print("Recent conversations:")
-    print_conversation_list(conversations)
+    print_conversation_list(conversations, seen_state=seen_state)
 
     while True:
         choice = input("select chat> ").strip()
@@ -287,6 +336,7 @@ def flush_new_messages(
     contact: Contact,
     seen: set[tuple[str | None, int, bool, str]],
     pending_self_messages: Counter[str],
+    seen_state: SeenState,
     limit: int,
     you_label: str,
     them_label: str,
@@ -302,6 +352,8 @@ def flush_new_messages(
             if pending_self_messages[pending_key] <= 0:
                 pending_self_messages.pop(pending_key, None)
             continue
+        if not message.is_from_me:
+            seen_state.mark_message_seen(contact, message)
         fresh.append(message)
 
     if fresh:
@@ -314,6 +366,7 @@ def start_poller(
     contact: Contact,
     seen: set[tuple[str | None, int, bool, str]],
     pending_self_messages: Counter[str],
+    seen_state: SeenState,
     limit: int,
     interval: float,
     stop_event: threading.Event,
@@ -326,6 +379,7 @@ def start_poller(
                     contact,
                     seen,
                     pending_self_messages,
+                    seen_state,
                     limit,
                     "you",
                     contact.label,
@@ -358,6 +412,7 @@ def handle_input(
     contact: Contact,
     seen: set[tuple[str | None, int, bool, str]],
     pending_self_messages: Counter[str],
+    seen_state: SeenState,
     limit: int,
 ) -> InputResult:
     if text == "/quit":
@@ -371,6 +426,7 @@ def handle_input(
     if text == "/list":
         next_contact = prompt_for_conversation(
             store,
+            seen_state,
             limit=DEFAULT_CHAT_LIST_LIMIT,
             interactive_picker=True,
             allow_cancel=True,
@@ -380,7 +436,7 @@ def handle_input(
         print("commands: /help /history /list (back to chats) /quit")
         return InputResult()
 
-    send_message(contact.handle, text)
+    send_message(contact.handle, text, participant_handles=contact.participant_handles)
     echoed = False
     for _ in range(5):
         time.sleep(0.35)
@@ -389,6 +445,7 @@ def handle_input(
             contact,
             seen,
             pending_self_messages,
+            seen_state,
             limit,
             "you",
             contact.label,
@@ -416,11 +473,13 @@ def handle_input(
 
 def run_chat_session(
     store: MessageStore,
+    seen_state: SeenState,
     contact: Contact,
     history_limit: int,
     poll_interval: float,
 ) -> tuple[bool, Contact | None]:
     history = store.recent_messages(contact, limit=history_limit)
+    seen_state.mark_contact_seen(contact)
     print(f"tmsg session: {contact.label}")
     if history:
         print_history(history, "you", contact.label)
@@ -433,6 +492,7 @@ def run_chat_session(
         contact,
         seen,
         pending_self_messages,
+        seen_state,
         history_limit,
         poll_interval,
         stop_event,
@@ -460,6 +520,7 @@ def run_chat_session(
                     contact=contact,
                     seen=seen,
                     pending_self_messages=pending_self_messages,
+                    seen_state=seen_state,
                     limit=history_limit,
                 )
             except MessageSendError as exc:
@@ -471,6 +532,7 @@ def run_chat_session(
                         contact,
                         seen,
                         pending_self_messages,
+                        seen_state,
                         history_limit,
                         poll_interval,
                         stop_event,
@@ -485,6 +547,7 @@ def run_chat_session(
                         contact,
                         seen,
                         pending_self_messages,
+                        seen_state,
                         history_limit,
                         poll_interval,
                         stop_event,
@@ -502,6 +565,7 @@ def run_chat_session(
                     contact,
                     seen,
                     pending_self_messages,
+                    seen_state,
                     history_limit,
                     poll_interval,
                     stop_event,
@@ -515,15 +579,19 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     store = MessageStore()
+    seen_state = SeenState()
 
     try:
         if args.list_chats:
-            print_conversation_list(store.recent_conversations(limit=DEFAULT_CHAT_LIST_LIMIT))
+            print_conversation_list(
+                store.recent_conversations(limit=DEFAULT_CHAT_LIST_LIMIT),
+                seen_state=seen_state,
+            )
             return 0
 
         raw_contact = args.contact_flag or args.contact
         contact = resolve_contact(store, raw_contact) if raw_contact else prompt_for_conversation(
-            store, limit=DEFAULT_CHAT_LIST_LIMIT
+            store, seen_state, limit=DEFAULT_CHAT_LIST_LIMIT
         )
     except MessageStoreError as exc:
         parser.exit(1, f"{exc}\n")
@@ -535,6 +603,7 @@ def main() -> int:
     while keep_running:
         keep_running, next_contact = run_chat_session(
             store=store,
+            seen_state=seen_state,
             contact=contact,
             history_limit=args.history_limit,
             poll_interval=args.poll_interval,

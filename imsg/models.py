@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Tuple
 
 
 @dataclass(frozen=True)
@@ -9,9 +10,16 @@ class Contact:
     handle: str
     label: str
     chat_identifier: str | None = None
+    chat_guid: str | None = None
+    participant_handles: Tuple[str, ...] = ()
     service: str | None = None
     preview: str | None = None
     last_message_at: datetime | None = None
+    last_message_rowid: int | None = None
+    latest_incoming_rowid: int | None = None
+    latest_incoming_at: datetime | None = None
+    unread_count: int = 0
+    last_read_message_timestamp: datetime | None = None
 
 
 @dataclass(frozen=True)
