@@ -28,12 +28,10 @@ on run argv
       end repeat
     end if
 
-    repeat with candidateChat in chats
-      if my chat_contains_handle(candidateChat, targetHandle) then
-        send messageText to contents of candidateChat
-        return
-      end if
-    end repeat
+    set targetService to 1st service whose service type = iMessage
+    set targetBuddy to buddy targetHandle of targetService
+    send messageText to targetBuddy
+    return
   end tell
 
   error "Could not find an existing Messages chat for this target."
@@ -57,17 +55,6 @@ on csv_to_list(valueText)
   end repeat
   return filteredItems
 end csv_to_list
-
-on chat_contains_handle(candidateChat, targetHandle)
-  tell application "Messages"
-    repeat with participantRef in participants of contents of candidateChat
-      if (handle of contents of participantRef) is targetHandle then
-        return true
-      end if
-    end repeat
-  end tell
-  return false
-end chat_contains_handle
 
 on chat_matches_handles(candidateChat, expectedHandles)
   tell application "Messages"
