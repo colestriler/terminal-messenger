@@ -30,6 +30,7 @@ class Message:
     timestamp: datetime
     is_from_me: bool
     handle: str | None = None
+    sender_label: str | None = None
     chat_identifier: str | None = None
     service: str | None = None
 

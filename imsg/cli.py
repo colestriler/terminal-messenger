@@ -86,7 +86,7 @@ def render_message_line(
     them_label: str = "them",
     use_color: bool = False,
 ) -> str:
-    speaker = you_label if message.is_from_me else transcript_label(them_label)
+    speaker = you_label if message.is_from_me else transcript_label(message.sender_label or them_label)
     timestamp = colorize(f"[{message.time_label}]", ANSI_DIM, enabled=use_color)
     speaker_text = f"{speaker}>"
     if message.is_from_me:
@@ -203,9 +203,9 @@ def select_conversation_with_arrows(
         scroll_offset = 0
         query = ""
         selected_key: str | None = None
+        conversations = store.recent_conversations(limit=limit)
 
         while True:
-            conversations = store.recent_conversations(limit=limit)
             if not conversations:
                 return None
 
@@ -261,6 +261,7 @@ def select_conversation_with_arrows(
             stdscr.refresh()
             key = stdscr.getch()
             if key == -1:
+                conversations = store.recent_conversations(limit=limit)
                 selected_key = filtered[selected_index].chat_identifier or filtered[selected_index].handle
                 continue
             if key in (curses.KEY_UP, ord("k")):

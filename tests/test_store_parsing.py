@@ -23,9 +23,13 @@ from imsg.cli import (
     transcript_label,
 )
 from imsg.messages_store import (
+    MESSAGE_QUERY_BY_CHAT,
+    MESSAGE_QUERY_BY_HANDLE,
     apple_timestamp_to_datetime,
     extract_nsstring_text,
+    MessageStore,
     normalize_text,
+    row_to_message,
     row_to_contact,
 )
 from imsg.models import Contact, Message
@@ -72,6 +76,25 @@ class FakeResolver:
         if handle is None:
             return None
         return self.names.get(handle)
+
+
+class RecordingConnection:
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, tuple[object, ...]]] = []
+        self.row_factory = None
+
+    def execute(self, query: str, params: tuple[object, ...]):
+        self.executed.append((query, params))
+        return self
+
+    def fetchall(self) -> list[dict[str, object]]:
+        return []
+
+    def __enter__(self) -> "RecordingConnection":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
 
 
 class StoreParsingTests(unittest.TestCase):
@@ -275,6 +298,64 @@ class StoreParsingTests(unittest.TestCase):
         self.assertIn("you>", sent_line)
         self.assertIn(ANSI_CYAN, received_line)
         self.assertIn("Frida>", received_line)
+
+    def test_render_message_line_prefers_message_sender_label_for_group_chat(self) -> None:
+        received = Message(
+            rowid=2,
+            guid="2",
+            text="hi",
+            timestamp=apple_timestamp_to_datetime(0),
+            is_from_me=False,
+            handle="+15551234567",
+            sender_label="Madi",
+        )
+        received_line = render_message_line(received, them_label="Trail Blazzers", use_color=False)
+        self.assertIn("Madi>", received_line)
+        self.assertNotIn("Trail Blazzers>", received_line)
+
+    def test_row_to_message_resolves_sender_name(self) -> None:
+        row = {
+            "ROWID": 10,
+            "guid": "abc",
+            "text": "hello",
+            "attributedBody": None,
+            "date": 784_000_000_000_000_000,
+            "is_from_me": 0,
+            "handle_id": "+15550000001",
+            "service": "iMessage",
+            "chat_identifier": "chat123",
+        }
+        resolver = FakeResolver({"+15550000001": "Frida"})
+        message = row_to_message(row, resolver=resolver)
+        self.assertIsNotNone(message)
+        assert message is not None
+        self.assertEqual(message.sender_label, "Frida")
+
+    def test_recent_messages_prefers_chat_scope_over_handle_scope(self) -> None:
+        store = MessageStore()
+        store.contact_resolver = FakeResolver({})
+        connection = RecordingConnection()
+        contact = Contact(
+            handle="+15551234567",
+            label="Frida",
+            chat_identifier="chat-group-123",
+        )
+        with patch.object(store, "_connect", return_value=connection):
+            store.recent_messages(contact, limit=10)
+        self.assertEqual(connection.executed, [(MESSAGE_QUERY_BY_CHAT, ("chat-group-123", 10))])
+
+    def test_recent_messages_falls_back_to_handle_scope_without_chat_identifier(self) -> None:
+        store = MessageStore()
+        store.contact_resolver = FakeResolver({})
+        connection = RecordingConnection()
+        contact = Contact(
+            handle="+15551234567",
+            label="Frida",
+            chat_identifier=None,
+        )
+        with patch.object(store, "_connect", return_value=connection):
+            store.recent_messages(contact, limit=10)
+        self.assertEqual(connection.executed, [(MESSAGE_QUERY_BY_HANDLE, ("+15551234567", 10))])
 
     def test_flush_new_messages_skips_db_echo_for_optimistic_send(self) -> None:
         contact = Contact(handle="+15551234567", label="Frida")

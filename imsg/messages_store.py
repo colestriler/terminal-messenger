@@ -11,7 +11,7 @@ from imsg.models import Contact, Message
 
 APPLE_EPOCH = 978307200
 
-MESSAGE_QUERY = """
+MESSAGE_QUERY_BY_CHAT = """
 SELECT
   message.ROWID,
   message.guid,
@@ -29,10 +29,30 @@ LEFT JOIN chat_message_join
   ON chat_message_join.message_id = message.ROWID
 LEFT JOIN chat
   ON chat.ROWID = chat_message_join.chat_id
-WHERE (
-  LOWER(COALESCE(handle.id, '')) = LOWER(?)
-  OR LOWER(COALESCE(chat.chat_identifier, '')) = LOWER(?)
-)
+WHERE LOWER(COALESCE(chat.chat_identifier, '')) = LOWER(?)
+ORDER BY message.date DESC, message.ROWID DESC
+LIMIT ?
+"""
+
+MESSAGE_QUERY_BY_HANDLE = """
+SELECT
+  message.ROWID,
+  message.guid,
+  message.text,
+  message.attributedBody,
+  message.date,
+  message.is_from_me,
+  handle.id AS handle_id,
+  handle.service,
+  chat.chat_identifier
+FROM message
+LEFT JOIN handle
+  ON handle.ROWID = message.handle_id
+LEFT JOIN chat_message_join
+  ON chat_message_join.message_id = message.ROWID
+LEFT JOIN chat
+  ON chat.ROWID = chat_message_join.chat_id
+WHERE LOWER(COALESCE(handle.id, '')) = LOWER(?)
 ORDER BY message.date DESC, message.ROWID DESC
 LIMIT ?
 """
@@ -244,10 +264,11 @@ def apple_timestamp_to_datetime(raw_value: int | float | None) -> datetime:
     return datetime.fromtimestamp(value + APPLE_EPOCH, tz=timezone.utc)
 
 
-def row_to_message(row: sqlite3.Row) -> Message | None:
+def row_to_message(row: sqlite3.Row, resolver: ContactResolver | None = None) -> Message | None:
     text = normalize_text(row["text"], row["attributedBody"])
     if not text:
         return None
+    handle_id = row["handle_id"]
 
     return Message(
         rowid=int(row["ROWID"]),
@@ -255,7 +276,8 @@ def row_to_message(row: sqlite3.Row) -> Message | None:
         text=text,
         timestamp=apple_timestamp_to_datetime(row["date"]),
         is_from_me=bool(row["is_from_me"]),
-        handle=row["handle_id"],
+        handle=handle_id,
+        sender_label=(resolver.lookup(handle_id) if resolver and handle_id else handle_id),
         chat_identifier=row["chat_identifier"],
         service=row["service"],
     )
@@ -373,17 +395,17 @@ class MessageStore:
         )
 
     def recent_messages(self, contact: Contact, limit: int = 25) -> list[Message]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                MESSAGE_QUERY,
-                (
-                    contact.handle,
-                    contact.chat_identifier or contact.handle,
-                    limit,
-                ),
-            ).fetchall()
+        if contact.chat_identifier:
+            query = MESSAGE_QUERY_BY_CHAT
+            params = (contact.chat_identifier, limit)
+        else:
+            query = MESSAGE_QUERY_BY_HANDLE
+            params = (contact.handle, limit)
 
-        messages = [message for row in rows if (message := row_to_message(row))]
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        messages = [message for row in rows if (message := row_to_message(row, resolver=self.contact_resolver))]
         messages.sort(key=lambda message: (message.timestamp, message.rowid))
         return messages
 
