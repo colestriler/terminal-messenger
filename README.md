@@ -2,7 +2,7 @@
 
 `tmsg` is a local macOS terminal client for iMessage. The distributable package name is `terminal-messenger`, and the command people run is `tmsg`.
 
-## Current behavior
+## What it does
 
 - Sends messages through `Messages.app` using AppleScript.
 - Reads recent messages from the local Messages database.
@@ -13,19 +13,48 @@
 - Shows `*` markers for chats with unread incoming messages.
 - Styles your messages differently from incoming ones for easier scanning.
 
-## Install
+## Requirements
 
-For end users:
+- macOS
+- iMessage set up in `Messages.app`
+- Python 3.8+
+
+## Quick start
+
+Install with `pipx`:
 
 ```bash
 pipx install terminal-messenger
 ```
 
-For local development:
+Then run:
 
 ```bash
-cd /Users/colestriler/code/terminal-messenger
+tmsg
+```
+
+On first use:
+
+- macOS should ask for Automation permission so `tmsg` can control `Messages`
+- you may need to grant Full Disk Access so `tmsg` can read `~/Library/Messages/chat.db`
+
+If macOS blocks access, open:
+
+- `System Settings > Privacy & Security > Automation`
+- `System Settings > Privacy & Security > Full Disk Access`
+
+## Local development
+
+```bash
+git clone <your-repo-url>
+cd terminal-messenger
 python3 -m pip install -e .
+```
+
+You can also run it without installing the console script:
+
+```bash
+python3 -m tmsg
 ```
 
 ## Run
@@ -60,12 +89,6 @@ Override the default 100-message history window:
 tmsg --history-limit 200
 ```
 
-You can also run the module directly while developing:
-
-```bash
-python3 -m tmsg
-```
-
 ## Picker controls
 
 When the chat picker is open:
@@ -85,18 +108,6 @@ When the chat picker is open:
 - `/list` goes back to the conversation picker
 - `/quit`
 
-## Permissions
-
-`tmsg` depends on macOS privacy permissions.
-
-- The first send should trigger an Automation prompt so your terminal or Python runtime can control `Messages`.
-- Reading `~/Library/Messages/chat.db` may require Full Disk Access for your terminal app and sometimes the `python3` binary too.
-
-If sending or reading fails, check:
-
-- `System Settings > Privacy & Security > Automation`
-- `System Settings > Privacy & Security > Full Disk Access`
-
 ## Notes
 
 - The Messages database schema is undocumented and may change across macOS versions.
@@ -110,10 +121,10 @@ If sending or reading fails, check:
 python3 -m unittest discover -s tests
 ```
 
-Then:
+Manual check:
 
-1. Run `tmsg`.
-2. Search or arrow to a conversation and press `Enter`.
-3. Send a message and approve the Automation prompt if macOS asks.
-4. Reply from another device and confirm the terminal prints the incoming message.
+1. Run `tmsg`
+2. Open a conversation
+3. Send a message and approve any macOS prompt
+4. Reply from another device and confirm it appears in the terminal
 

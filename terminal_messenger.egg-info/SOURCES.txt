@@ -7,6 +7,7 @@ imsg/contact_resolver.py
 imsg/messages_applescript.py
 imsg/messages_store.py
 imsg/models.py
+imsg/seen_state.py
 terminal_messenger.egg-info/PKG-INFO
 terminal_messenger.egg-info/SOURCES.txt
 terminal_messenger.egg-info/dependency_links.txt
