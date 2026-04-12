@@ -94,12 +94,6 @@ Open a specific phone number or email:
 tmsg --contact "+15555555555"
 ```
 
-List recent conversations without opening one:
-
-```bash
-tmsg --list-chats
-```
-
 Show more history when opening a chat:
 
 ```bash
