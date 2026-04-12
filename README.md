@@ -82,18 +82,6 @@ Go back to the chat list from inside a conversation:
 
 ## Other commands
 
-Open a specific conversation:
-
-```bash
-tmsg frida
-```
-
-Open a specific phone number or email:
-
-```bash
-tmsg --contact "+15555555555"
-```
-
 Show more history when opening a chat:
 
 ```bash
