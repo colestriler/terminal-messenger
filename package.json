@@ -1,0 +1,8 @@
+{
+  "name": "terminal-messenger-release",
+  "private": true,
+  "scripts": {
+    "deploy": "python3 deploy_package.py"
+  },
+  "packageManager": "yarn@4.6.0+sha224.acd0786f07ffc6c933940eb65fc1d627131ddf5455bddcc295dc90fd"
+}

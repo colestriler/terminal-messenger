@@ -129,3 +129,37 @@ You can also run it directly during development:
 python3 -m tmsg
 ```
 
+## Releasing
+
+Publish a new version to PyPI:
+
+```bash
+yarn deploy 0.1.1
+```
+
+That command:
+
+- updates the version in `pyproject.toml`
+- rebuilds the package
+- checks the built files
+- uploads them to PyPI
+
+If you want non-interactive upload, either set `PYPI_TOKEN` in your shell or create a local `.env` file:
+
+```bash
+export PYPI_TOKEN=pypi-...
+yarn deploy 0.1.1
+```
+
+or:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set:
+
+```bash
+PYPI_TOKEN=pypi-...
+```
+
