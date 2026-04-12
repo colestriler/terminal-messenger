@@ -13,6 +13,11 @@ authors = [
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/colestriler/terminal-messenger"
+Repository = "https://github.com/colestriler/terminal-messenger"
+Issues = "https://github.com/colestriler/terminal-messenger/issues"
+
 [project.scripts]
 tmsg = "tmsg.cli:main"
 
