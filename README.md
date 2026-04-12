@@ -1,17 +1,19 @@
 # tmsg
 
-`tmsg` is a local macOS terminal client for iMessage. The distributable package name is `terminal-messenger`, and the command people run is `tmsg`.
+`tmsg` is a terminal client for iMessage on macOS.
 
-## What it does
+Package name: `terminal-messenger`  
+Command name: `tmsg`
+
+## Features
 
 - Sends messages through `Messages.app` using AppleScript.
 - Reads recent messages from the local Messages database.
-- Shows up to 250 recent conversations in the picker and list view.
-- Loads 100 recent messages by default when you open a chat.
+- Lets you pick recent conversations from the terminal.
+- Loads recent message history when you open a chat.
 - Resolves many phone numbers and emails to contact names from macOS Contacts.
-- Supports arrow-key chat selection and live search in the picker.
-- Shows `*` markers for chats with unread incoming messages.
-- Styles your messages differently from incoming ones for easier scanning.
+- Supports arrow-key navigation and live search.
+- Shows unread chats in the picker.
 
 ## Requirements
 
@@ -19,112 +21,111 @@
 - iMessage set up in `Messages.app`
 - Python 3.8+
 
-## Quick start
+## Install
 
-Install with `pipx`:
+Recommended:
 
 ```bash
 pipx install terminal-messenger
 ```
 
-Then run:
+If you do not use `pipx`:
 
 ```bash
-tmsg
+python3 -m pip install terminal-messenger
 ```
 
-On first use:
+## First-time macOS permissions
 
-- macOS should ask for Automation permission so `tmsg` can control `Messages`
-- you may need to grant Full Disk Access so `tmsg` can read `~/Library/Messages/chat.db`
+`tmsg` needs macOS permissions to work:
 
-If macOS blocks access, open:
+- `Automation` so it can send through `Messages.app`
+- `Full Disk Access` so it can read `~/Library/Messages/chat.db`
+
+The first send should trigger the Automation prompt automatically.
+
+If reading or sending fails, check:
 
 - `System Settings > Privacy & Security > Automation`
 - `System Settings > Privacy & Security > Full Disk Access`
 
-## Local development
+You may need to grant access to both your terminal app and the Python binary it uses.
 
-```bash
-git clone <your-repo-url>
-cd terminal-messenger
-python3 -m pip install -e .
-```
-
-You can also run it without installing the console script:
-
-```bash
-python3 -m tmsg
-```
-
-## Run
-
-Open the interactive picker:
+## Quick start
 
 ```bash
 tmsg
 ```
 
-Open a specific conversation directly:
+That opens the conversation picker.
+
+## Common commands
+
+Open the chat picker:
+
+```bash
+tmsg
+```
+
+Open a specific conversation:
 
 ```bash
 tmsg frida
 ```
 
-or:
+Open a specific phone number or email:
 
 ```bash
 tmsg --contact "+15555555555"
 ```
 
-List recent conversations without opening a chat:
+List recent conversations without opening one:
 
 ```bash
 tmsg --list-chats
 ```
 
-Override the default 100-message history window:
+Show more history when opening a chat:
 
 ```bash
 tmsg --history-limit 200
 ```
 
-## Picker controls
+## While using it
 
-When the chat picker is open:
+In the picker:
 
-- `*` marks chats with unread messages.
-- Type to search/filter conversations live.
-- `Up` / `Down` moves the selection.
-- `Enter` opens the highlighted conversation.
-- `Backspace` deletes search text.
-- `Esc` or `q` cancels.
-- The picker refreshes periodically while open so new unread chats can appear.
+- Type to search
+- `Up` / `Down` to move
+- `Enter` to open
+- `Esc` or `q` to cancel
 
-## In-chat commands
+In a chat:
 
 - `/help`
 - `/history`
-- `/list` goes back to the conversation picker
+- `/list`
 - `/quit`
 
-## Notes
+## Troubleshooting
 
-- The Messages database schema is undocumented and may change across macOS versions.
-- Contact-name resolution is best-effort and depends on local Contacts data.
-- Some reactions, attachments, and rich-content previews are still rough around the edges.
-- There may still be terminal UX quirks because the chat view currently uses a lightweight terminal loop rather than a full-screen TUI.
+- `Operation not permitted` usually means Full Disk Access is missing
+- send failures usually mean Automation permission was denied
+- if `tmsg` is not found after install, reopen your terminal or refresh your shell shims
+- macOS Messages internals are undocumented, so some reactions and rich content may still be imperfect
 
-## Verify locally
+## Development
 
 ```bash
+git clone <your-repo-url>
+cd terminal-messenger
+python3 -m pip install -e .
 python3 -m unittest discover -s tests
 ```
 
-Manual check:
+You can also run it directly during development:
 
-1. Run `tmsg`
-2. Open a conversation
-3. Send a message and approve any macOS prompt
-4. Reply from another device and confirm it appears in the terminal
+```bash
+python3 -m tmsg
+```
 
