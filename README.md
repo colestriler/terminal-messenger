@@ -57,15 +57,30 @@ You may need to grant access to both your terminal app and the Python binary it 
 tmsg
 ```
 
-That opens the conversation picker.
+That opens the home screen with your recent chats.
 
-## Common commands
+The main flow is:
 
-Open the chat picker:
+1. Run `tmsg`
+2. Pick a chat
+3. Type messages
+4. Use `/list` anytime to go back to the home screen
+
+## Main commands
+
+Open `tmsg` and show your chats:
 
 ```bash
 tmsg
 ```
+
+Go back to the chat list from inside a conversation:
+
+```bash
+/list
+```
+
+## Other commands
 
 Open a specific conversation:
 
@@ -102,9 +117,9 @@ In the picker:
 
 In a chat:
 
+- `/list`
 - `/help`
 - `/history`
-- `/list`
 - `/quit`
 
 ## Troubleshooting
@@ -127,39 +142,5 @@ You can also run it directly during development:
 
 ```bash
 python3 -m tmsg
-```
-
-## Releasing
-
-Publish a new version to PyPI:
-
-```bash
-yarn deploy 0.1.1
-```
-
-That command:
-
-- updates the version in `pyproject.toml`
-- rebuilds the package
-- checks the built files
-- uploads them to PyPI
-
-If you want non-interactive upload, either set `PYPI_TOKEN` in your shell or create a local `.env` file:
-
-```bash
-export PYPI_TOKEN=pypi-...
-yarn deploy 0.1.1
-```
-
-or:
-
-```bash
-cp .env.example .env
-```
-
-Then edit `.env` and set:
-
-```bash
-PYPI_TOKEN=pypi-...
 ```
 

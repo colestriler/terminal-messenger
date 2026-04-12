@@ -1,8 +1,11 @@
 Metadata-Version: 2.1
 Name: terminal-messenger
-Version: 0.1.1
+Version: 0.1.2
 Summary: Terminal iMessage client for macOS
 Author: Cole Striler
+Project-URL: Homepage, https://github.com/colestriler/terminal-messenger
+Project-URL: Repository, https://github.com/colestriler/terminal-messenger
+Project-URL: Issues, https://github.com/colestriler/terminal-messenger/issues
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 
